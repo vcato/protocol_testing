@@ -11,23 +11,25 @@ run_unit_tests: \
 	./$*
 	touch $@
 
-fakesockets_test: fakesockets_test.o fakesockets.o internetaddress.o
+MESSAGETESTING=messagetesting.o messageservice.o terminal.o
+FAKESOCKETS=fakesockets.o internetaddress.o
+SYSTEMSOCKETS=systemsockets.o internetaddress.o
+
+fakesockets_test: fakesockets_test.o internetaddress.o fakesockets.o
 	$(CXX) $(LDFLAGS) -o $@ $^
 
-messagetesting_test: messagetesting_test.o messagetesting.o \
-  fakesockets.o messageservice.o internetaddress.o faketerminal.o terminal.o
+messagetesting_test: messagetesting_test.o faketerminal.o \
+  $(FAKESOCKETS) $(MESSAGETESTING)
 	$(CXX) $(LDFLAGS) -o $@ $^
 
-messageservice_test: messageservice_test.o fakesockets.o messageservice.o \
-  internetaddress.o
+messageservice_test: messageservice_test.o messageservice.o $(FAKESOCKETS)
 	$(CXX) $(LDFLAGS) -o $@ $^
 
-terminal_manualtest: terminal_manualtest.o systemterminal.o terminal.o
+terminal_manualtest: terminal_manualtest.o terminal.o systemterminal.o
 	$(CXX) $(LDFLAGS) -o $@ $^
 
-messaging_manualtest: messaging_manualtest.o \
-  internetaddress.o systemsockets.o fakesockets.o messageservice.o \
-  systemterminal.o messagetesting.o terminal.o
+messaging_manualtest: messaging_manualtest.o systemterminal.o \
+  $(SYSTEMSOCKETS) $(MESSAGETESTING)
 	$(CXX) $(LDFLAGS) -o $@ $^
 
 clean:
