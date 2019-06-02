@@ -18,12 +18,9 @@ static int runServer()
   SystemSelector selector;
   SystemTerminal terminal;
   MessageTestServer server{sockets,terminal};
-
-  if (!server.start()) {
-    return EXIT_FAILURE;
-  }
-
   vector<EventSinkInterface*> event_sinks{&server.eventSink()};
+
+  server.start();
 
   while (server.isActive()) {
     processEvents(selector,event_sinks);
@@ -40,9 +37,9 @@ static int runClient()
   SystemTerminal terminal;
   SystemSelector selector;
   MessageTestClient client{sockets,terminal};
+  vector<EventSinkInterface *> event_sinks = {&client.eventSink()};
 
   client.start();
-  vector<EventSinkInterface *> event_sinks = {&client.eventSink()};
 
   while (client.isActive()) {
     processEvents(selector,event_sinks);

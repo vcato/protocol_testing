@@ -17,6 +17,7 @@ struct Terminal {
   };
 
   bool isActive() const { return !had_eof; }
+  bool isWriting() const { return !text_to_show.empty(); }
   void setupSelect(PreSelectParamsInterface &select_params);
   void show(const std::string &);
 

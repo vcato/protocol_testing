@@ -15,8 +15,8 @@ public:
   MessageTestServer(SocketsInterface &,Terminal &);
 
   bool start();
-  bool hasAClient() const { return message_server.nClients() != 0; }
-  bool isActive() const { return message_server.isActive(); }
+  bool hasAClient() const;
+  bool isActive() const;
   EventSinkInterface &eventSink() { return event_sink; }
 
 private:
@@ -55,6 +55,7 @@ private:
   void gotLineFromTerminal(const std::string &);
   void setupSelect(PreSelectParamsInterface &pre_select);
   void handleSelect(const PostSelectParamsInterface &post_select);
+  void sendMessageToClient(ClientId,const std::string &);
 };
 
 
@@ -100,7 +101,9 @@ private:
   void gotLineFromTerminal(const std::string &line);
   void gotEndOfFileFromTerminal() { message_client.disconnect(); }
   void connectionRefused();
+  void connected();
   void gotMessageFromServer(const char *message);
+  void sendMessage(const std::string &message);
 };
 
 

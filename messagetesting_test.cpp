@@ -101,11 +101,13 @@ static void testNormalUsage()
   tester.server.start();
   tester.waitForServerTerminalOutput("Waiting for connection on port 4145\n");
   tester.client.start();
+  tester.waitForClientTerminalOutput("Connected.\n");
   tester.waitForServerTerminalOutput("Client 0 connected.\n");
   tester.addClientTerminalInput("test\n");
   tester.waitForClientTerminalOutput("Sending message test\n");
   tester.waitForServerTerminalOutput("Got message: test\n");
   tester.addServerTerminalInput("test\n");
+  tester.waitForServerTerminalOutput("Sending message to client 0: test\n");
   tester.waitForClientTerminalOutput("Got message: test\n");
   tester.client.stop();
   tester.waitForServerTerminalOutput("Client 0 disconnected.\n");

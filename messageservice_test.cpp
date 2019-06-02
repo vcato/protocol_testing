@@ -63,8 +63,11 @@ struct ClientEventCallbacks : MessageClient::EventInterface {
   std::function<void(const char *)> got_message =
     [](const char *){ assert(false); };
 
+  std::function<void()> connected_callback = do_nothing;
+
   void connectionRefused() override { connection_refused(); }
-  virtual void gotMessage(const char *message) { got_message(message); }
+  void connected() override { connected_callback(); }
+  void gotMessage(const char *message) override { got_message(message); }
 };
 }
 

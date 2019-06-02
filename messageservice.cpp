@@ -627,6 +627,7 @@ void
       return;
     }
 
+    event_handler.connected();
     finished_connecting = true;
   }
 }

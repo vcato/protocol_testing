@@ -254,6 +254,7 @@ struct MessageClient {
   public:
     struct EventInterface {
       virtual void connectionRefused() = 0;
+      virtual void connected() = 0;
       virtual void gotMessage(const char *) = 0;
     };
 

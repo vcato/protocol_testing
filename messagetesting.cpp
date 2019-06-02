@@ -43,6 +43,14 @@ void MessageTestClient::connectionRefused()
 }
 
 
+void MessageTestClient::connected()
+{
+  ostringstream stream;
+  stream << "Connected.\n";
+  terminal.show(stream.str());
+}
+
+
 void MessageTestClient::gotMessageFromServer(const char *message)
 {
   ostringstream stream;
@@ -59,12 +67,17 @@ struct MessageTestClient::ClientHandler : MessageClient::EventInterface {
   {
   }
 
-  virtual void connectionRefused()
+  void connectionRefused() override
   {
     message_test_client.connectionRefused();
   }
 
-  virtual void gotMessage(const char *message)
+  void connected() override
+  {
+    message_test_client.connected();
+  }
+
+  void gotMessage(const char *message) override
   {
     message_test_client.gotMessageFromServer(message);
   }
@@ -82,12 +95,18 @@ MessageTestClient::MessageTestClient(
 }
 
 
-void MessageTestClient::gotLineFromTerminal(const string &line)
+void MessageTestClient::sendMessage(const string &message)
 {
   ostringstream stream;
-  stream << "Sending message " << line << "\n";
+  stream << "Sending message " << message << "\n";
   terminal.show(stream.str());
-  message_client.queueMessage(line.c_str(),line.length() + 1);
+  message_client.queueMessage(message.c_str(),message.length() + 1);
+}
+
+
+void MessageTestClient::gotLineFromTerminal(const string &line)
+{
+  sendMessage(line);
 }
 
 
@@ -147,6 +166,18 @@ struct MessageTestServer::TerminalHandler : Terminal::EventInterface {
 };
 
 
+bool MessageTestServer::hasAClient() const
+{
+  return message_server.nClients() != 0;
+}
+
+
+bool MessageTestServer::isActive() const
+{
+  return message_server.isActive() || terminal.isWriting();
+}
+
+
 void MessageTestServer::setupSelect(PreSelectParamsInterface &pre_select)
 {
   message_server.setupSelect(pre_select);
@@ -179,10 +210,29 @@ void MessageTestServer::clientDisconnected(ClientId client_id)
 }
 
 
+void
+  MessageTestServer::sendMessageToClient(
+    ClientId client_id,
+    const std::string &message
+  )
+{
+  ostringstream stream;
+
+  stream << "Sending message to client " << client_id <<
+    ": " << message << "\n";
+
+  terminal.show(stream.str());
+
+  message_server.queueMessageToClient(
+    client_id,message.c_str(),message.length()+1
+  );
+}
+
+
 void MessageTestServer::gotLineFromTerminal(const string &line)
 {
   for (ClientId client_id : message_server.clientIds()) {
-    message_server.queueMessageToClient(client_id,line.c_str(),line.length()+1);
+    sendMessageToClient(client_id,line);
   }
 }
 
