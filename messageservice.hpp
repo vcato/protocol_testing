@@ -11,18 +11,17 @@
 #include "selectparams.hpp"
 
 
-struct MessageHandlerInterface {
-  virtual void gotMessage(const char *message) = 0;
-};
-
-
 class MessageReceiver {
   public:
+    struct EventInterface {
+      virtual void gotMessage(const char *message) = 0;
+    };
+
     bool
       receiveMoreOfTheMessage(
-        SocketsInterface &sockets,
-        MessageHandlerInterface &message_handler,
-        SocketsInterface::SocketId server_socket_id
+        SocketsInterface &,
+        EventInterface &,
+        SocketsInterface::SocketId
       );
 
   private:
@@ -295,43 +294,6 @@ struct MessageClient {
         EventInterface &,
         const PostSelectParamsInterface &
       );
-};
-
-
-struct ClientEventCallbacks : MessageClient::EventInterface {
-  std::function<void()> connection_refused =
-    []{ assert(false); };
-
-  std::function<void(const char *)> got_message =
-    [](const char *){ assert(false); };
-
-  void connectionRefused() override { connection_refused(); }
-  virtual void gotMessage(const char *message) { got_message(message); }
-};
-
-
-struct ServerEventCallbacks : MessageServer::EventInterface {
-  std::function<void(ClientId,const char *)> got_message
-    = [](ClientId,const char *){ assert(false); };
-  std::function<void(ClientId)> client_connected
-    = [](ClientId){ assert(false); };
-  std::function<void(ClientId)> client_disconnected
-    = [](ClientId){ assert(false); };
-    
-  void gotMessage(ClientId client_id,const char *message) override
-  {
-    got_message(client_id,message);
-  }
-
-  void clientConnected(ClientId client_id) override
-  {
-    client_connected(client_id);
-  }
-
-  void clientDisconnected(ClientId client_id) override
-  {
-    client_disconnected(client_id);
-  }
 };
 
 

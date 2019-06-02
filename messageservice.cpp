@@ -7,7 +7,7 @@ using std::vector;
 bool
   MessageReceiver::receiveMoreOfTheMessage(
     SocketsInterface &sockets,
-    MessageHandlerInterface &message_handler,
+    EventInterface &message_handler,
     SocketId server_socket_id
   )
 {
@@ -119,11 +119,14 @@ void QueuedMessageSender::queueMessage(const char *message,int message_size)
 }
 
 
-struct MessageServer::MessageHandler : MessageHandlerInterface {
-  EventInterface &event_handler;
+struct MessageServer::MessageHandler : MessageReceiver::EventInterface {
+  MessageServer::EventInterface &event_handler;
   const ClientId client_id;
 
-  MessageHandler(EventInterface &event_handler_arg,ClientId client_id_arg)
+  MessageHandler(
+    MessageServer::EventInterface &event_handler_arg,
+    ClientId client_id_arg
+  )
   : event_handler(event_handler_arg),
     client_id(client_id_arg)
   {
@@ -409,10 +412,10 @@ void
 }
 
 
-struct MessageClient::MessageHandler : MessageHandlerInterface {
-  EventInterface &event_handler;
+struct MessageClient::MessageHandler : MessageReceiver::EventInterface {
+  MessageClient::EventInterface &event_handler;
 
-  MessageHandler(EventInterface &event_handler_arg)
+  MessageHandler(MessageClient::EventInterface &event_handler_arg)
   : event_handler(event_handler_arg)
   {
   }
