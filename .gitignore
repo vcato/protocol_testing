@@ -1,0 +1,9 @@
+*.pass
+*.d
+*.o
+main
+messagetestserver_test
+terminal_manualtest
+messagetesting_test
+messageservice_test
+fakesockets_test
