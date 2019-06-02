@@ -5,11 +5,9 @@
 #include "selectparams.hpp"
 
 
-struct Terminal {
-  bool had_eof = false;
+class Terminal {
+public:
   using Line = std::string;
-  Line line_received_so_far;
-  std::string text_to_show;
 
   struct EventInterface {
     virtual void gotLine(const Line &) = 0;
@@ -18,14 +16,19 @@ struct Terminal {
 
   bool isActive() const { return !had_eof; }
   bool isWriting() const { return !text_to_show.empty(); }
-  void setupSelect(PreSelectParamsInterface &select_params);
   void show(const std::string &);
+  void setupSelect(PreSelectParamsInterface &select_params);
 
   void
     handleSelect(
       const PostSelectParamsInterface &select_params,
       EventInterface &event_handler
     );
+
+private:
+  bool had_eof = false;
+  Line line_received_so_far;
+  std::string text_to_show;
 
   virtual int inputFileDescriptor() const = 0;
   virtual int errorFileDescriptor() const = 0;

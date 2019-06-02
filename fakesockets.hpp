@@ -10,10 +10,8 @@
 
 class FakeSockets : public SocketsInterface, public FakeSelectable {
   public:
-    FakeSockets(FakeFileDescriptorAllocator &file_descriptor_allocator_arg)
-    : file_descriptor_allocator(file_descriptor_allocator_arg)
-    {
-    }
+    FakeSockets(FakeFileDescriptorAllocator &file_descriptor_allocator_arg);
+
     int create() override { return allocate(); }
     void setNonBlocking(SocketId socket_id,bool non_blocking) override;
     void connect(SocketId socket_id, const InternetAddress &address) override;
@@ -33,11 +31,11 @@ class FakeSockets : public SocketsInterface, public FakeSelectable {
 
   private:
     struct Socket {
-      std::optional<int> maybe_bound_port;
       bool connection_was_refused = false;
       bool is_listening = false;
       bool is_non_blocking = false;
       bool is_closed = false;
+      std::optional<int> maybe_bound_port;
       std::optional<int> maybe_connect_port;
       std::optional<SocketId> maybe_remote_socket_id;
       std::optional<size_t> maybe_n_bytes_before_recv_error;
@@ -96,7 +94,6 @@ class FakeSockets : public SocketsInterface, public FakeSelectable {
     }
 
     bool anySocketsIsBoundToPort(int port) const;
-
     bool connectionWasRefused(SocketId socket_id);
     std::optional<SocketId> findSocketConnectedToSocket(SocketId socket_id);
     std::optional<SocketId> findSocketIdListeningOnPort(int port);

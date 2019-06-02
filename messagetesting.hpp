@@ -7,9 +7,6 @@
 #include "messageservice.hpp"
 
 
-inline int messageTestPort() { return 4145; }
-
-
 class MessageTestServer {
 public:
   MessageTestServer(SocketsInterface &,Terminal &);
@@ -63,7 +60,7 @@ class MessageTestClient {
 public:
   MessageTestClient(SocketsInterface &,Terminal &);
 
-  void start() { message_client.startConnecting(messageTestPort()); }
+  void start();
   void stop() { message_client.disconnect(); }
   bool isActive() { return message_client.isActive(); }
   EventSinkInterface &eventSink() { return event_sink; }

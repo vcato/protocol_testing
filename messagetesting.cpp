@@ -7,6 +7,9 @@ using std::ostringstream;
 using std::string;
 
 
+static int messageTestPort() { return 4145; }
+
+
 struct MessageTestClient::TerminalHandler : Terminal::EventInterface {
   MessageTestClient &message_test_client;
 
@@ -25,6 +28,12 @@ struct MessageTestClient::TerminalHandler : Terminal::EventInterface {
     message_test_client.gotEndOfFileFromTerminal();
   }
 };
+
+
+void MessageTestClient::start()
+{
+  message_client.startConnecting(messageTestPort());
+}
 
 
 void MessageTestClient::setupSelect(PreSelectParamsInterface &pre_select)

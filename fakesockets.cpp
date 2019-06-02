@@ -1,8 +1,15 @@
 #include "fakesockets.hpp"
 
-
 using SocketId = FakeSockets::SocketId;
 using std::optional;
+
+
+FakeSockets::FakeSockets(
+  FakeFileDescriptorAllocator &file_descriptor_allocator_arg
+)
+: file_descriptor_allocator(file_descriptor_allocator_arg)
+{
+}
 
 
 SocketId FakeSockets::allocate()
