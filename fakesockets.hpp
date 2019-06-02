@@ -1,8 +1,6 @@
 #ifndef FAKESOCKETS_HPP_
 #define FAKESOCKETS_HPP_
 
-
-#include <vector>
 #include <optional>
 #include "socketsinterface.hpp"
 #include "buffer.hpp"

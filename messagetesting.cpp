@@ -2,7 +2,6 @@
 
 #include <iostream>
 #include <sstream>
-#include "messagetestport.hpp"
 
 using std::ostringstream;
 using std::string;

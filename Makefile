@@ -12,10 +12,10 @@ run_unit_tests: \
 	touch $@
 
 MESSAGETESTING=messagetesting.o messageservice.o terminal.o
-FAKESOCKETS=fakesockets.o internetaddress.o
+FAKESOCKETS=fakesockets.o internetaddress.o fakefiledescriptorallocator.o
 SYSTEMSOCKETS=systemsockets.o internetaddress.o
 
-fakesockets_test: fakesockets_test.o internetaddress.o fakesockets.o
+fakesockets_test: fakesockets_test.o $(FAKESOCKETS)
 	$(CXX) $(LDFLAGS) -o $@ $^
 
 messagetesting_test: messagetesting_test.o faketerminal.o \

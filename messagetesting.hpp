@@ -1,13 +1,13 @@
 #ifndef MESSAGETESTING_HPP_
 #define MESSAGETESTING_HPP_
 
-
-#include <iostream>
 #include "socketsinterface.hpp"
 #include "terminal.hpp"
 #include "processevents.hpp"
 #include "messageservice.hpp"
-#include "messagetestport.hpp"
+
+
+inline int messageTestPort() { return 4145; }
 
 
 class MessageTestServer {

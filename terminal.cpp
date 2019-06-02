@@ -1,5 +1,7 @@
 #include "terminal.hpp"
 
+#include <cassert>
+
 
 using std::string;
 

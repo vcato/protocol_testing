@@ -1,7 +1,6 @@
 #ifndef SYSTEMTERMINAL_HPP_
 #define SYSTEMTERMINAL_HPP_
 
-
 #include "terminal.hpp"
 
 

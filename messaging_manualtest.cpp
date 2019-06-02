@@ -4,7 +4,6 @@
 #include "systemselector.hpp"
 #include "systemterminal.hpp"
 #include "processevents.hpp"
-#include "messagetestport.hpp"
 #include "messagetesting.hpp"
 
 using std::cerr;

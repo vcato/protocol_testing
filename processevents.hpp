@@ -1,8 +1,8 @@
 #ifndef PROCESSEVENTS_HPP_
 #define PROCESSEVENTS_HPP_
 
-
 #include <vector>
+#include "selector.hpp"
 
 
 struct EventSinkInterface {

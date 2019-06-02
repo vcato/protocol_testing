@@ -1,5 +1,6 @@
 #include "messagetesting.hpp"
 
+#include <iostream>
 #include "fakesockets.hpp"
 #include "faketerminal.hpp"
 #include "fakeselector.hpp"

@@ -3,6 +3,7 @@
 #include <iostream>
 #include <sstream>
 #include <random>
+#include <functional>
 #include "fakesockets.hpp"
 #include "fakeselector.hpp"
 

@@ -2,6 +2,7 @@
 #define FAKESELECTABLE_HPP_
 
 #include <float.h>
+#include <vector>
 
 
 struct FakeSelectParams {

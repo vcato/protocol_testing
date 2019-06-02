@@ -6,7 +6,6 @@
 #include <cassert>
 #include <queue>
 #include <optional>
-#include <functional>
 #include "socketsinterface.hpp"
 #include "selectparams.hpp"
 

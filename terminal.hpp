@@ -2,7 +2,7 @@
 #define TERMINAL_HPP_
 
 #include <string>
-#include "selector.hpp"
+#include "selectparams.hpp"
 
 
 struct Terminal {
