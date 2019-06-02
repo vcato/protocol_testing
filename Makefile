@@ -1,6 +1,6 @@
 CXXFLAGS=-W -Wall -Wundef -pedantic -std=c++17 -D_GLIBCXX_DEBUG=1 -g -MD -MP
 
-all: run_unit_tests terminal_manualtest main
+all: run_unit_tests terminal_manualtest messaging_manualtest
 
 run_unit_tests: \
   fakesockets_test.pass \
@@ -25,7 +25,8 @@ messageservice_test: messageservice_test.o fakesockets.o messageservice.o \
 terminal_manualtest: terminal_manualtest.o systemterminal.o terminal.o
 	$(CXX) $(LDFLAGS) -o $@ $^
 
-main: main.o internetaddress.o systemsockets.o fakesockets.o messageservice.o \
+messaging_manualtest: messaging_manualtest.o \
+  internetaddress.o systemsockets.o fakesockets.o messageservice.o \
   systemterminal.o messagetesting.o terminal.o
 	$(CXX) $(LDFLAGS) -o $@ $^
 
