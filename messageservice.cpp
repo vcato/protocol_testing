@@ -1,7 +1,53 @@
 #include "messageservice.hpp"
 
+#include <string.h>
+#include <cassert>
+
 using SocketId = SocketsInterface::SocketId;
 using std::vector;
+
+
+struct MessageReceiver::Impl {
+  static size_t bufferSize(const MessageReceiver &self)
+  {
+    return self.buffer.size();
+  }
+
+  static size_t chunkSize(const MessageReceiver &self)
+  {
+    return bufferSize(self) - self.n_bytes_read;
+  }
+
+  static void chunkReceived(MessageReceiver &self,size_t n)
+  {
+    assert(n <= chunkSize(self));
+    self.n_bytes_read += n;
+    assert(self.n_bytes_read <= bufferSize(self));
+  }
+
+  static void reset(MessageReceiver &self,size_t n_bytes_to_keep)
+  {
+    assert(n_bytes_to_keep <= chunkSize(self));
+    memmove(self.buffer.data(), chunkStart(self), n_bytes_to_keep);
+    self.n_bytes_read = n_bytes_to_keep;
+  }
+
+  static char *chunkStart(MessageReceiver &self)
+  {
+    return self.buffer.data() + self.n_bytes_read;
+  }
+
+  static const char *bufferStart(const MessageReceiver &self)
+  {
+    return self.buffer.data();
+  }
+
+  static void resizeBuffer(MessageReceiver &self,size_t new_size)
+  {
+    assert(new_size >= self.n_bytes_read);
+    self.buffer.resize(new_size);
+  }
+};
 
 
 bool
@@ -11,17 +57,18 @@ bool
     SocketId server_socket_id
   )
 {
-  size_t read_count = chunkSize();
+  size_t read_count = Impl::chunkSize(*this);
   static const size_t minimum_read_size = 1024;
 
   if (read_count < minimum_read_size) {
-    resizeBuffer(bufferSize() + minimum_read_size - read_count);
-    read_count = chunkSize();
+    size_t n_bytes_needed = minimum_read_size - read_count;
+    Impl::resizeBuffer(*this, Impl::bufferSize(*this) + n_bytes_needed);
+    read_count = Impl::chunkSize(*this);
   }
 
   assert(read_count >= minimum_read_size);
 
-  char *chunk_start = chunkStart();
+  char *chunk_start = Impl::chunkStart(*this);
   int read_result = sockets.recv(server_socket_id, chunk_start, read_count);
 
   if (read_result <= 0) {
@@ -38,16 +85,60 @@ bool
       size_t n_message_bytes = p - chunk_start + 1;
       size_t n_extra_bytes = n_bytes_read - n_message_bytes;
       assert(n_bytes_read >= n_message_bytes);
-      chunkReceived(n_message_bytes);
-      message_handler.gotMessage(bufferStart());
-      reset(n_extra_bytes);
+      Impl::chunkReceived(*this,n_message_bytes);
+      message_handler.gotMessage(Impl::bufferStart(*this));
+      Impl::reset(*this,n_extra_bytes);
       return true;
     }
 
-    chunkReceived(n_bytes_read);
+    Impl::chunkReceived(*this,n_bytes_read);
   }
 
   return true;
+}
+
+
+struct MessageSender::Impl {
+  static size_t nBytesSent(const MessageSender &self)
+  {
+    return self.n_bytes_sent;
+  }
+
+  static size_t messageSize(const MessageSender &self)
+  {
+    return self.message_size;
+  }
+
+  static void reset(MessageSender &self)
+  {
+    self.message_being_sent = nullptr;
+  }
+
+  static const char *chunkStart(const MessageSender &self)
+  {
+    return self.message_being_sent + self.n_bytes_sent;
+  }
+
+  static size_t chunkSize(const MessageSender &self)
+  {
+    return self.message_size - self.n_bytes_sent;
+  }
+
+  static void chunkSent(MessageSender &self,size_t n)
+  {
+    assert(n <= chunkSize(self));
+    self.n_bytes_sent += n;
+    assert(self.n_bytes_sent <= self.message_size);
+  }
+};
+
+
+void MessageSender::queueMessage(const char *message_arg, int message_size_arg)
+{
+  assert(!message_being_sent);
+  message_being_sent = message_arg;
+  message_size = message_size_arg;
+  n_bytes_sent = 0;
 }
 
 
@@ -57,7 +148,10 @@ bool
     const SocketId client_socket_id
   )
 {
-  int send_result = sockets.send(client_socket_id,chunkStart(),chunkSize());
+  const char *chunk_start = Impl::chunkStart(*this);
+  size_t chunk_size = Impl::chunkSize(*this);
+
+  int send_result = sockets.send(client_socket_id,chunk_start,chunk_size);
 
   if (send_result <= 0) {
     return false;
@@ -65,14 +159,23 @@ bool
 
   size_t n_bytes_sent = send_result;
 
-  chunkSent(n_bytes_sent);
+  Impl::chunkSent(*this,n_bytes_sent);
 
-  if (nBytesSent() == messageSize()) {
-    reset();
+  if (Impl::nBytesSent(*this) == Impl::messageSize(*this)) {
+    Impl::reset(*this);
   }
 
   return true;
 }
+
+
+struct QueuedMessageSender::Impl {
+  static void setupNextMessage(QueuedMessageSender &self)
+  {
+    std::vector<char> &message = self.message_queue.front();
+    self.message_sender.queueMessage(message.data(), message.size());
+  }
+};
 
 
 bool
@@ -101,7 +204,7 @@ bool
     message_queue.pop();
 
     if (!message_queue.empty()) {
-      setupNextMessage();
+      Impl::setupNextMessage(*this);
     }
   }
 
@@ -114,33 +217,127 @@ void QueuedMessageSender::queueMessage(const char *message,int message_size)
   message_queue.push(std::vector<char>(message,message + message_size));
 
   if (!message_sender.messageIsBeingSent()) {
-    setupNextMessage();
+    Impl::setupNextMessage(*this);
   }
 }
 
 
-struct MessageServer::MessageHandler : MessageReceiver::EventInterface {
-  MessageServer::EventInterface &event_handler;
-  const ClientId client_id;
+struct MessageServer::Client {
+  Client() = default;
+  Client(Client &&) = default;
+  std::optional<SocketId> maybe_socket_id;
+  MessageReceiver message_receiver;
+  QueuedMessageSender queued_message_sender;
+};
 
-  MessageHandler(
-    MessageServer::EventInterface &event_handler_arg,
-    ClientId client_id_arg
-  )
-  : event_handler(event_handler_arg),
-    client_id(client_id_arg)
+
+struct MessageServer::Impl {
+  struct MessageHandler : MessageReceiver::EventInterface {
+    MessageServer::EventInterface &event_handler;
+    const ClientId client_id;
+
+    MessageHandler(
+      MessageServer::EventInterface &event_handler_arg,
+      ClientId client_id_arg
+    )
+    : event_handler(event_handler_arg),
+      client_id(client_id_arg)
+    {
+    }
+
+    void gotMessage(const char *message) override
+    {
+      event_handler.gotMessage(client_id,message);
+    }
+  };
+
+  static bool isListening(const MessageServer &self)
   {
+    return self.maybe_listen_socket_id.has_value();
   }
 
-  void gotMessage(const char *message) override
+  static void acceptConnection(MessageServer &self,EventInterface &);
+
+  static void
+    setupWaitingForConnection(MessageServer &self,PreSelectParamsInterface &);
+
+  static void
+    handleWaitingForConnection(
+      MessageServer &self,
+      const PostSelectParamsInterface &,
+      EventInterface &
+    );
+
+  static void closeClientSockets(MessageServer &self)
   {
-    event_handler.gotMessage(client_id,message);
+    std::vector<Client> &clients = self.clients;
+    size_t n_clients = clients.size();
+
+    for (size_t i=0; i!=n_clients; ++i) {
+      if (clients[i].maybe_socket_id) {
+        self.sockets.close(*clients[i].maybe_socket_id);
+        clients[i].maybe_socket_id.reset();
+      }
+    }
   }
+
+  static void closeListenSocket(MessageServer &self)
+  {
+    if (self.maybe_listen_socket_id) {
+      self.sockets.close(*self.maybe_listen_socket_id);
+      self.maybe_listen_socket_id.reset();
+    }
+  }
+
+  static void closeSockets(MessageServer &self)
+  {
+    closeClientSockets(self);
+    closeListenSocket(self);
+  }
+
+  static bool isSendingAMessage(const Client &client)
+  {
+    return client.queued_message_sender.isSendingAMessage();
+  }
+
+  static bool isConnected(const Client &client)
+  {
+    return client.maybe_socket_id.has_value();
+  }
+
+  static void setupReceivingMessage(Client &,PreSelectParamsInterface &);
+  static void setupSendingMessage(Client &,PreSelectParamsInterface &);
+
+  static void
+    handleReceivingMessage(
+      MessageServer &self,
+      Client &,
+      EventInterface &,
+      ClientId,
+      const PostSelectParamsInterface &
+    );
+
+  static bool
+    handleSendingMessage(
+      MessageServer &self,
+      Client &,
+      const PostSelectParamsInterface &
+    );
+
+  static void
+    disconnectClient(
+      MessageServer &self,
+      ClientId,
+      EventInterface &event_handler
+    );
+
+  static Client &client(MessageServer &self,ClientId);
 };
 
 
 void
-  MessageServer::handleReceivingMessage(
+  MessageServer::Impl::handleReceivingMessage(
+    MessageServer &self,
     Client &client,
     EventInterface &event_handler,
     ClientId client_id,
@@ -163,7 +360,7 @@ void
   {
     bool could_receive =
       client.message_receiver.receiveMoreOfTheMessage(
-        sockets,message_handler,socket_id
+        self.sockets,message_handler,socket_id
       );
 
     if (could_receive) {
@@ -171,7 +368,7 @@ void
     }
   }
 
-  disconnectClient(client_id,event_handler);
+  disconnectClient(self,client_id,event_handler);
 }
 
 
@@ -183,7 +380,7 @@ MessageServer::MessageServer(SocketsInterface &sockets_arg)
 
 MessageServer::~MessageServer()
 {
-  closeSockets();
+  Impl::closeSockets(*this);
 }
 
 
@@ -216,7 +413,7 @@ void MessageServer::stopListening()
 
 bool MessageServer::isSendingAMessageTo(ClientId client_id) const
 {
-  return isSendingAMessage(clients[client_id]);
+  return Impl::isSendingAMessage(clients[client_id]);
 }
 
 
@@ -227,10 +424,16 @@ SocketId MessageServer::clientSocketId(ClientId client_id) const
 }
 
 
-void MessageServer::acceptConnection(EventInterface &event_handler)
+void
+  MessageServer::Impl::acceptConnection(
+    MessageServer &self,
+    EventInterface &event_handler
+  )
 {
-  assert(maybe_listen_socket_id);
+  assert(self.maybe_listen_socket_id);
+  const SocketId listen_socket_id = *self.maybe_listen_socket_id;
   size_t client_index = 0;
+  vector<Client> &clients = self.clients;
   size_t n_clients = clients.size();
 
   for (;;) {
@@ -240,7 +443,7 @@ void MessageServer::acceptConnection(EventInterface &event_handler)
 
     if (!clients[client_index].maybe_socket_id) {
       clients[client_index].maybe_socket_id =
-        sockets.accept(*maybe_listen_socket_id);
+        self.sockets.accept(listen_socket_id);
       event_handler.clientConnected(client_index);
       return;
     }
@@ -251,33 +454,35 @@ void MessageServer::acceptConnection(EventInterface &event_handler)
 
 
 void
-  MessageServer::setupWaitingForConnection(
+  MessageServer::Impl::setupWaitingForConnection(
+    MessageServer &self,
     PreSelectParamsInterface &pre_select_params
   )
 {
-  assert(maybe_listen_socket_id);
-  const SocketId listen_socket_id = *maybe_listen_socket_id;
+  assert(self.maybe_listen_socket_id);
+  const SocketId listen_socket_id = *self.maybe_listen_socket_id;
   pre_select_params.setRead(listen_socket_id);
 }
 
 
 void
-  MessageServer::handleWaitingForConnection(
+  MessageServer::Impl::handleWaitingForConnection(
+    MessageServer &self,
     const PostSelectParamsInterface &post_select_params,
     EventInterface &event_handler
   )
 {
-  assert(maybe_listen_socket_id);
-  const SocketId listen_socket_id = *maybe_listen_socket_id;
+  assert(self.maybe_listen_socket_id);
+  const SocketId listen_socket_id = *self.maybe_listen_socket_id;
 
   if (post_select_params.readIsSet(listen_socket_id)) {
-    acceptConnection(event_handler);
+    acceptConnection(self,event_handler);
   }
 }
 
 
 void
-  MessageServer::setupSendingMessage(
+  MessageServer::Impl::setupSendingMessage(
     Client &client,
     PreSelectParamsInterface &pre_select_params
   )
@@ -289,7 +494,7 @@ void
 
 
 void
-  MessageServer::setupReceivingMessage(
+  MessageServer::Impl::setupReceivingMessage(
     Client &client,
     PreSelectParamsInterface &pre_select_params
   )
@@ -300,28 +505,31 @@ void
 }
 
 
-MessageServer::Client &MessageServer::client(ClientId client_id)
+MessageServer::Client &
+  MessageServer::Impl::client(MessageServer &self,ClientId client_id)
 {
-  assert(clients[client_id].maybe_socket_id);
-  return clients[client_id];
+  assert(self.clients[client_id].maybe_socket_id);
+  return self.clients[client_id];
 }
 
 
 void
-  MessageServer::disconnectClient(
+  MessageServer::Impl::disconnectClient(
+    MessageServer &self,
     ClientId client_id,
     EventInterface &event_handler
   )
 {
-  Client &client = this->client(client_id);
-  sockets.close(*client.maybe_socket_id);
+  Client &client = Impl::client(self,client_id);
+  self.sockets.close(*client.maybe_socket_id);
   client.maybe_socket_id.reset();
   event_handler.clientDisconnected(client_id);
 }
 
 
 bool
-  MessageServer::handleSendingMessage(
+  MessageServer::Impl::handleSendingMessage(
+    MessageServer &self,
     Client &client,
     const PostSelectParamsInterface &post_select_params
   )
@@ -330,7 +538,7 @@ bool
 
   return
     client.queued_message_sender.handleSendingMessage(
-      sockets,
+      self.sockets,
       *client.maybe_socket_id,
       post_select_params
     );
@@ -339,17 +547,17 @@ bool
 
 void MessageServer::setupSelect(PreSelectParamsInterface &pre_select_params)
 {
-  if (isListening()) {
-    setupWaitingForConnection(pre_select_params);
+  if (Impl::isListening(*this)) {
+    Impl::setupWaitingForConnection(*this,pre_select_params);
   }
 
   for (Client &client : clients) {
-    if (isConnected(client)) {
-      if (isSendingAMessage(client)) {
-        setupSendingMessage(client,pre_select_params);
+    if (Impl::isConnected(client)) {
+      if (Impl::isSendingAMessage(client)) {
+        Impl::setupSendingMessage(client,pre_select_params);
       }
 
-      setupReceivingMessage(client,pre_select_params);
+      Impl::setupReceivingMessage(client,pre_select_params);
     }
   }
 }
@@ -362,7 +570,8 @@ void
     int message_size
   )
 {
-  client(client_id).queued_message_sender.queueMessage(message,message_size);
+  Client &client = MessageServer::Impl::client(*this,client_id);
+  client.queued_message_sender.queueMessage(message,message_size);
 }
 
 
@@ -373,7 +582,7 @@ vector<MessageServer::ClientId> MessageServer::clientIds() const
   size_t n = clients.size();
 
   for (size_t i=0; i!=n; ++i) {
-    if (isConnected(clients[i])) {
+    if (Impl::isConnected(clients[i])) {
       client_ids.push_back(i);
     }
   }
@@ -393,37 +602,67 @@ void
   for (size_t i=0; i!=n; ++i) {
     Client &client = clients[i];
 
-    if (isSendingAMessage(client)) {
-      bool could_send = handleSendingMessage(client,post_select_params);
+    if (Impl::isSendingAMessage(client)) {
+      bool could_send =
+        Impl::handleSendingMessage(*this,client,post_select_params);
 
       if (!could_send) {
-        disconnectClient(i,event_handler);
+        Impl::disconnectClient(*this,i,event_handler);
       }
     }
 
-    if (isConnected(client)) {
-      handleReceivingMessage(client,event_handler,i,post_select_params);
+    if (Impl::isConnected(client)) {
+      Impl::handleReceivingMessage(
+        *this,client,event_handler,i,post_select_params
+      );
     }
   }
 
-  if (isListening()) {
-    handleWaitingForConnection(post_select_params,event_handler);
+  if (Impl::isListening(*this)) {
+    Impl::handleWaitingForConnection(*this,post_select_params,event_handler);
   }
 }
 
 
-struct MessageClient::MessageHandler : MessageReceiver::EventInterface {
-  MessageClient::EventInterface &event_handler;
+struct MessageClient::Impl {
+  struct MessageHandler : MessageReceiver::EventInterface {
+    MessageClient::EventInterface &event_handler;
 
-  MessageHandler(MessageClient::EventInterface &event_handler_arg)
-  : event_handler(event_handler_arg)
-  {
-  }
+    MessageHandler(MessageClient::EventInterface &event_handler_arg)
+    : event_handler(event_handler_arg)
+    {
+    }
 
-  void gotMessage(const char *message) override
-  {
-    event_handler.gotMessage(message);
-  }
+    void gotMessage(const char *message) override
+    {
+      event_handler.gotMessage(message);
+    }
+  };
+
+  static void
+    setupWaitingForConnection(MessageClient &,PreSelectParamsInterface &);
+
+  static void
+    handleWaitingForConnection(
+      MessageClient &,
+      EventInterface &,
+      const PostSelectParamsInterface &
+    );
+
+  static void
+    setupReceivingMessage(MessageClient &,PreSelectParamsInterface &);
+
+  static void setupSendingMessage(MessageClient &,PreSelectParamsInterface &);
+
+  static void
+    handleSendingMessage(MessageClient &,const PostSelectParamsInterface &);
+
+  static void
+    handleReceivingMessage(
+      MessageClient &,
+      EventInterface &,
+      const PostSelectParamsInterface &
+    );
 };
 
 
@@ -434,23 +673,25 @@ MessageClient::MessageClient(SocketsInterface &sockets_arg)
 
 
 void
-  MessageClient::setupReceivingMessage(
+  MessageClient::Impl::setupReceivingMessage(
+    MessageClient &self,
     PreSelectParamsInterface &pre_select_params
   )
 {
-  assert(maybe_socket_id);
-  const SocketId client_socket_id = *maybe_socket_id;
+  assert(self.maybe_socket_id);
+  const SocketId client_socket_id = *self.maybe_socket_id;
   pre_select_params.setRead(client_socket_id);
 }
 
 
 void
-  MessageClient::setupSendingMessage(
+  MessageClient::Impl::setupSendingMessage(
+    MessageClient &self,
     PreSelectParamsInterface &pre_select_params
   )
 {
-  assert(maybe_socket_id);
-  pre_select_params.setWrite(*maybe_socket_id);
+  assert(self.maybe_socket_id);
+  pre_select_params.setWrite(*self.maybe_socket_id);
 }
 
 
@@ -491,15 +732,15 @@ void MessageClient::setupSelect(PreSelectParamsInterface &pre_select_params)
   }
 
   if (!finished_connecting) {
-    setupWaitingForConnection(pre_select_params);
+    Impl::setupWaitingForConnection(*this,pre_select_params);
     return;
   }
 
   if (isSendingAMessage()) {
-    setupSendingMessage(pre_select_params);
+    Impl::setupSendingMessage(*this,pre_select_params);
   }
 
-  setupReceivingMessage(pre_select_params);
+  Impl::setupReceivingMessage(*this,pre_select_params);
 }
 
 
@@ -512,41 +753,43 @@ void
   if (!isActive()) return;
 
   if (!finished_connecting) {
-    handleWaitingForConnection(event_handler,post_select_params);
+    Impl::handleWaitingForConnection(*this,event_handler,post_select_params);
   }
   else if (isSendingAMessage()) {
-    handleSendingMessage(post_select_params);
+    Impl::handleSendingMessage(*this,post_select_params);
   }
   else {
-    handleReceivingMessage(event_handler,post_select_params);
+    Impl::handleReceivingMessage(*this,event_handler,post_select_params);
   }
 }
 
 
 void
-  MessageClient::handleSendingMessage(
+  MessageClient::Impl::handleSendingMessage(
+    MessageClient &self,
     const PostSelectParamsInterface &post_select_params
   )
 {
-  assert(maybe_socket_id);
-  queued_message_sender.handleSendingMessage(
-    sockets,
-    *maybe_socket_id,
+  assert(self.maybe_socket_id);
+  self.queued_message_sender.handleSendingMessage(
+    self.sockets,
+    *self.maybe_socket_id,
     post_select_params
   );
 }
 
 
 void
-  MessageClient::handleReceivingMessage(
+  MessageClient::Impl::handleReceivingMessage(
+    MessageClient &self,
     EventInterface &event_handler,
     const PostSelectParamsInterface &post_select_params
   )
 {
   MessageHandler message_handler{event_handler};
 
-  assert(maybe_socket_id);
-  SocketId socket_id = *maybe_socket_id;
+  assert(self.maybe_socket_id);
+  SocketId socket_id = *self.maybe_socket_id;
 
   {
     bool can_recv = post_select_params.readIsSet(socket_id);
@@ -558,8 +801,8 @@ void
 
   {
     bool recv_was_successful =
-      message_receiver.receiveMoreOfTheMessage(
-        sockets,message_handler,socket_id
+      self.message_receiver.receiveMoreOfTheMessage(
+        self.sockets,message_handler,socket_id
       );
 
     if (recv_was_successful) {
@@ -567,9 +810,9 @@ void
     }
   }
 
-  sockets.close(socket_id);
-  maybe_socket_id.reset();
-  finished_connecting = false;
+  self.sockets.close(socket_id);
+  self.maybe_socket_id.reset();
+  self.finished_connecting = false;
 }
 
 
@@ -599,35 +842,37 @@ void MessageClient::startConnecting(int port)
 
 
 void
-  MessageClient::setupWaitingForConnection(
+  MessageClient::Impl::setupWaitingForConnection(
+    MessageClient &self,
     PreSelectParamsInterface &pre_select_params
   )
 {
-  assert(maybe_socket_id);
-  pre_select_params.setWrite(*maybe_socket_id);
+  assert(self.maybe_socket_id);
+  pre_select_params.setWrite(*self.maybe_socket_id);
 }
 
 
 void
-  MessageClient::handleWaitingForConnection(
+  MessageClient::Impl::handleWaitingForConnection(
+    MessageClient &self,
     EventInterface &event_handler,
     const PostSelectParamsInterface &post_select_params
   )
 {
-  assert(maybe_socket_id);
-  const SocketId client_socket_id = *maybe_socket_id;
+  assert(self.maybe_socket_id);
+  const SocketId client_socket_id = *self.maybe_socket_id;
   bool can_send = post_select_params.writeIsSet(client_socket_id);
 
   if (can_send) {
-    if (sockets.connectionWasRefused(client_socket_id)) {
-      sockets.close(client_socket_id);
-      maybe_socket_id.reset();
-      assert(!finished_connecting);
+    if (self.sockets.connectionWasRefused(client_socket_id)) {
+      self.sockets.close(client_socket_id);
+      self.maybe_socket_id.reset();
+      assert(!self.finished_connecting);
       event_handler.connectionRefused();
       return;
     }
 
     event_handler.connected();
-    finished_connecting = true;
+    self.finished_connecting = true;
   }
 }

@@ -1,5 +1,6 @@
 #include "messageservice.hpp"
 
+#include <string.h>
 #include <iostream>
 #include <sstream>
 #include <random>
