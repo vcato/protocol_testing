@@ -26,8 +26,8 @@ struct AbstractSelector {
     {
       assert(in_pre_select);
       assert(!in_post_select);
-      _doSelect();
       in_pre_select = false;
+      _doSelect();
       in_post_select = true;
     }
 
